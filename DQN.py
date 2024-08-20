@@ -37,7 +37,7 @@ def main():
     score = 0
     target_update = 10
     target = copy.deepcopy(agent)
-    score_list = []
+
     for i_episode in range(args.total_episode):
         if i_episode % target_update == 0:
             target = copy.deepcopy(agent)
@@ -45,6 +45,7 @@ def main():
 
         done = False
         while not done:
+            # env.render()
             epsilon = max(0.05, 0.25 - 0.01 * i_episode / 100)
             action = agent.action(torch.tensor(observation), epsilon)
             next_observation, reward, done, info = env.step(action)
@@ -54,7 +55,7 @@ def main():
 
             score += reward
             if len(agent.buffer) > 2000:
-                agent.train(32, target)
+                agent.train(args.batch_size, target)
 
             if done == 1:
                 break
@@ -63,7 +64,8 @@ def main():
             score = 0
 
     env.close()
-    torch.save(agent, 'model.pth')
+    print('save_model to ', args.output)
+    torch.save(agent, args.output)
 
 
 if __name__ == "__main__":
