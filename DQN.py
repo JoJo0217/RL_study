@@ -45,7 +45,7 @@ def main():
 
         done = False
         while not done:
-            # env.render()
+            env.render()
             epsilon = max(0.05, 0.25 - 0.01 * i_episode / 100)
             action = agent.action(torch.tensor(observation), epsilon)
             next_observation, reward, done, info = env.step(action)
