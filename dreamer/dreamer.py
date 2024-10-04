@@ -107,9 +107,9 @@ def train(batch, state_dim, deterministic_dim, device, transition_representation
         obs_seq.append(obs_temp)
         action_seq.append(action_temp)
         reward_seq.append(reward_temp)
-    obs_seq = torch.tensor(obs_seq, dtype=torch.float32).to(device)
-    action_seq = torch.tensor(action_seq, dtype=torch.float32).to(device)
-    reward_seq = torch.tensor(reward_seq, dtype=torch.float32).to(device)
+    obs_seq = torch.tensor(np.array(obs_seq), dtype=torch.float32).to(device)
+    action_seq = torch.tensor(np.array(action_seq), dtype=torch.float32).to(device)
+    reward_seq = torch.tensor(np.array(reward_seq), dtype=torch.float32).to(device)
     batch_size, seq_len, _, _, _ = obs_seq.size()
 
     prev_deter = transition_representation.init_hidden(batch_size).to(device)
@@ -146,6 +146,7 @@ def train(batch, state_dim, deterministic_dim, device, transition_representation
         reconstruction_loss = nn.functional.mse_loss(obs_pred, obs)
 
         reward_pred = reward_model(state, cur_deter)
+        reward_pred = reward_pred.squeeze(1)
         reward_loss = nn.functional.mse_loss(reward_pred, reward)
 
         prior = Normal(prior_mean, prior_std)
