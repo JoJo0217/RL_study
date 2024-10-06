@@ -222,16 +222,17 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
         deter = recurrent(imagine_states[t - 1], action, imagine_deters[t - 1])
         _, prior = transition(deter)
 
-        reward_dist = reward(imagine_states[t - 1], imagine_deters[t - 1])
-        reward_pred = reward_dist.sample()
-        discount_dist = discount(imagine_states[t - 1], imagine_deters[t - 1])
-        discount_pred = discount_dist.sample()
-
-        value = critic(imagine_states[t - 1], imagine_deters[t - 1])
-        target_value = target_net(imagine_states[t - 1], imagine_deters[t - 1])
-
         imagine_states.append(prior)
         imagine_deters.append(deter)
+
+        reward_dist = reward(imagine_states[t], imagine_deters[t])
+        reward_pred = reward_dist.sample()
+        discount_dist = discount(imagine_states[t], imagine_deters[t])
+        discount_pred = discount_dist.sample()
+
+        value = critic(imagine_states[t], imagine_deters[t])
+        target_value = target_net(imagine_states[t], imagine_deters[t])
+
         imagine_action_log_probs.append(action_log_prob)
         imagine_rewards.append(reward_pred)
         imgaine_discounts.append(discount_pred)
@@ -247,6 +248,7 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
 
     lambda_return_ = lambda_return(
         imagine_rewards, imagine_values_target, imgaine_discounts, args.lambda_)
+    print(lambda_return_.mean(dim=-1), imagine_values.mean(dim=-1))
     critic_loss = nn.functional.mse_loss(imagine_values[:-1], lambda_return_[:-1].detach())
 
     actor_loss = -args.reinforce_coef * (imagine_action_log_probs[:-1] * (lambda_return_[:-1] - imagine_values_target[:-1]).detach()).mean() -\

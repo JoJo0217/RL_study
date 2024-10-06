@@ -244,7 +244,8 @@ class ActionDiscrete(nn.Module):
             dist = OneHotCategorical(logits=logits)
             action = dist.sample() + dist.probs - dist.probs.detach()
         else:
-            action = torch.argmax(logits, dim=-1)
+            dist = OneHotCategorical(logits=logits)
+            action = dist.probs.argmax(dim=-1)
         return action
 
 
@@ -253,6 +254,8 @@ class Value(nn.Module):
         super(Value, self).__init__()
         self.seq = nn.Sequential(
             nn.Linear(args.state_size + args.deterministic_size, 256),
+            nn.ELU(),
+            nn.Linear(256, 256),
             nn.ELU(),
             nn.Linear(256, 1)
         )
@@ -286,13 +289,18 @@ class ReplayBufferSeq:
     def sample(self, batch_size, chunk_length):
         episode_borders = np.where(self.done)[0]
         sampled_indexes = []
+
         for _ in range(batch_size):
+            try_ = 0
             cross_border = True
             while cross_border:
                 initial_index = np.random.randint(len(self) - chunk_length + 1)
                 final_index = initial_index + chunk_length - 1
                 cross_border = np.logical_and(initial_index <= episode_borders,
                                               episode_borders < final_index).any()
+                try_ += 1
+                if try_ > 100:
+                    break
             sampled_indexes += list(range(initial_index, final_index + 1))
 
         sampled_observations = self.observations[sampled_indexes].reshape(
