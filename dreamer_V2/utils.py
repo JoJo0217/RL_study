@@ -48,6 +48,7 @@ def collect_data(args, env, obs_shape, action_dim, num_episode, world_model, act
                 _, posterior = representation(deter, obs_embed)
                 action_dist = actor(posterior, deter)
                 action = action_dist.sample()
+                action = torch.tanh(action)
                 next_obs, reward, terminated, truncated, info = env.step(action.cpu().numpy())
                 done = terminated or truncated
                 reward = np.array(reward)
@@ -215,8 +216,8 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
     for t in range(1, args.horizon + 1):
         action_dist = actor(imagine_states[t - 1], imagine_deters[t - 1])
         action = action_dist.rsample()
-
         action_log_prob = action_dist.log_prob(action).sum(-1)
+        action = torch.tanh(action)
         entropy = action_dist.entropy().sum(-1)
         deter = recurrent(imagine_states[t - 1], action, imagine_deters[t - 1])
         _, prior = transition(deter)
