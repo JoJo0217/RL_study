@@ -20,6 +20,7 @@ print("action space: ", action_dim, ", obs shape: ", obs_shape, sep='')
 
 def collect_seed(env, replay_buffer, num_episode):
     print("collecting seed data...")
+    total_reward = 0
     for _ in tqdm(range(num_episode)):
         obs, _ = env.reset()
         done = False
@@ -30,8 +31,10 @@ def collect_seed(env, replay_buffer, num_episode):
             done = terminated or truncated
             experience.append((np.array(obs), np.array(action), reward, done))
             obs = next_obs
+            total_reward += reward
         for exp in experience:
             replay_buffer.push(*exp)
+    return total_reward / num_episode
 
 
 def collect_data(env, state_dim, transition_representation, agent, replay_buffer, num_episode, device, seed=False):
@@ -135,6 +138,7 @@ def compute_lambda_values(rewards, values, horizon_length, device, lambda_):
     return returns
 
 
+'''
 def lambda_return(rewards, values, gamma, lambda_):
     # rewards, values : (Horizon+1, seq*batch)
     # 어렵다
@@ -162,6 +166,22 @@ def lambda_return(rewards, values, gamma, lambda_):
             V_lambda[:-n] += (1 - lambda_) * (lambda_ ** (n - 1)) * V_n[:-n]
 
     return V_lambda
+'''
+
+
+def lambda_return(rewards, values, gamma, lambda_):
+    # rewards, values: (Horizon+1, batch_size)
+    H = rewards.shape[0] - 1
+    bootstrap = values[-1]
+    next_values = torch.cat([values[1:], bootstrap[None]], dim=0)
+    inputs = rewards[:-1] + gamma * next_values[:-1] * (1 - lambda_)
+    last = bootstrap
+    outputs = []
+    for t in reversed(range(H)):
+        last = inputs[t] + gamma * lambda_ * last
+        outputs.append(last)
+    returns = torch.stack(outputs[::-1], dim=0)
+    return returns
 
 
 def train(batch, state_dim, deterministic_dim, device, transition_representation, reward_model, observation, actor, value, model_optimizer, model_params, actor_optimizer, critic_optimizer):
