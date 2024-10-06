@@ -89,22 +89,21 @@ def main():
     seed_episode(env, replay_buffer, args.seed_episode)
     for episode in range(args.total_episode):
         batch = replay_buffer.sample(args.batch_size, args.batch_seq)
-
+        print(len(replay_buffer))
         for step in range(args.train_step):
-            print(len(replay_buffer))
             loss, states, deters = train_world(
                 args, batch, world_model, model_optim, model_params, device)
-            logger.log(episode * step + step, epoch=episode, **loss)
+            logger.log(episode * args.train_step + step, epoch=episode, **loss)
             loss = train_actor_critic(args, states, deters, world_model,
                                       actor, critic, target_net, actor_optim, critic_optim, device)
-            logger.log(episode * step + step, epoch=episode, **loss)
-        train_score = collect_data(args, env, action_dim, args.collect_episode,
+            logger.log(episode * args.train_step + step, epoch=episode, **loss)
+        train_score = collect_data(args, env, obs_shape, action_dim, args.collect_episode,
                                    world_model, actor, replay_buffer, device)
-        logger.log(episode * step + step, epoch=episode, train_score=train_score)
+        logger.log(episode * args.train_step + step, epoch=episode, train_score=train_score)
         if episode % args.eval_step == 0:
-            test_score = evaluate(args, env, action_dim, args.collect_episode,
+            test_score = evaluate(args, env, obs_shape, action_dim, 1,
                                   world_model, actor, replay_buffer, device, is_render=True)
-            logger.log(episode * step + step, epoch=episode, test_score=test_score)
+            logger.log(episode * args.train_step + step, epoch=episode, test_score=test_score)
 
         if episode % args.save_step == 0:
             save_model(args, world_model, actor, critic)

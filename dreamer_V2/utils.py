@@ -3,6 +3,8 @@ import torch.nn as nn
 import random
 import numpy as np
 from tqdm import tqdm
+import gymnasium as gym
+import os
 
 
 def set_seed(seed):
@@ -27,7 +29,7 @@ def seed_episode(env, replay_buffer, num_episode):
             replay_buffer.push(*exp)
 
 
-def collect_data(args, env, action_dim, num_episode, world_model, actor, replay_buffer, device):
+def collect_data(args, env, obs_shape, action_dim, num_episode, world_model, actor, replay_buffer, device):
     encoder, recurrent, representation, transition, decoder, reward, discount = world_model
     print("Collecting data")
     total_reward = 0
@@ -59,7 +61,7 @@ def collect_data(args, env, action_dim, num_episode, world_model, actor, replay_
     return total_reward / num_episode
 
 
-def evaluate(args, env_, action_dim, num_episode, world_model, actor, replay_buffer, device, is_render=True):
+def evaluate(args, env_, obs_shape, action_dim, num_episode, world_model, actor, replay_buffer, device, is_render=True):
     encoder, recurrent, representation, transition, decoder, reward, discount = world_model
     print("Collecting data")
     total_reward = 0
@@ -98,6 +100,7 @@ def evaluate(args, env_, action_dim, num_episode, world_model, actor, replay_buf
 
 def save_model(args, world_model, actor, critic):
     encoder, recurrent, representation, transition, decoder, reward, discount = world_model
+    os.makedirs(args.output, exist_ok=True)
     torch.save(encoder.state_dict(), args.output + "/encoder.pth")
     torch.save(recurrent.state_dict(), args.output + "/recurrent.pth")
     torch.save(representation.state_dict(), args.output + "/representation.pth")
