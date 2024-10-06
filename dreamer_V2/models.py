@@ -268,7 +268,7 @@ class ReplayBufferSeq:
         self.observations = np.zeros((capacity, *observation_shape), dtype=np.float32)
         self.actions = np.zeros((capacity, action_dim), dtype=np.float32)
         self.rewards = np.zeros((capacity, 1), dtype=np.float32)
-        self.done = np.zeros((capacity, 1), dtype=np.bool_)
+        self.done = np.zeros((capacity, 1), dtype=np.int8)
 
         self.index = 0
         self.is_filled = False
