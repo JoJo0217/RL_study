@@ -241,7 +241,6 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
 
     lambda_return_ = lambda_return(
         imagine_rewards, imagine_values_target, imgaine_discounts, args.lambda_)
-    print(lambda_return_.mean(dim=-1), imagine_values.mean(dim=-1))
     critic_loss = nn.functional.mse_loss(imagine_values[:-1], lambda_return_[:-1].detach())
 
     actor_loss = -args.reinforce_coef * (imagine_action_log_probs[:-1] * (lambda_return_[:-1] - imagine_values_target[:-1]).detach()).mean() -\
