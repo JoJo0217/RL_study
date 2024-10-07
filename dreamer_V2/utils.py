@@ -155,20 +155,13 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
 
     kl_loss = kl_loss / (seq_len - 1)
 
-    obs_pred_dist = decoder(states[1:].view(-1, states.size(-1)),
-                            deters[1:].view(-1, deters.size(-1)))
-    reward_pred_dist = reward(states[1:].view(-1, states.size(-1)),
-                              deters[1:].view(-1, deters.size(-1)))
-    discount_pred_dist = discount(
-        states[1:].view(-1, states.size(-1)), deters[1:].view(-1, deters.size(-1)))
+    obs_pred_dist = decoder(states[:, 1:], deters[:, 1:])
+    reward_pred_dist = reward(states[:, 1:], deters[:, 1:])
+    discount_pred_dist = discount(states[:, 1:], deters[:, 1:])
 
-    obs_seq = obs_seq[:, 1:].reshape(-1, obs_seq.size(-1))
-    reward_seq = reward_seq[:, 1:].reshape(-1, reward_seq.size(-1))
-    done_seq = done_seq[:, 1:].reshape(-1, done_seq.size(-1))
-
-    obs_loss = obs_pred_dist.log_prob(obs_seq).sum(-1).mean()
-    reward_loss = reward_pred_dist.log_prob(reward_seq).sum(-1).mean()
-    discount_loss = discount_criterion(discount_pred_dist.probs, done_seq)
+    obs_loss = obs_pred_dist.log_prob(obs_seq[:, 1:]).mean()
+    reward_loss = reward_pred_dist.log_prob(reward_seq[:, 1:]).mean()
+    discount_loss = discount_criterion(discount_pred_dist.probs, 1 - done_seq[:, 1:]).mean()
 
     total_loss = -obs_loss - reward_loss + discount_loss + args.kl_beta * kl_loss.mean()
     world_optimizer.zero_grad()

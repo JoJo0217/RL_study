@@ -166,8 +166,13 @@ class Decoder2D(nn.Module):
         )
 
     def forward(self, state, deterministic):
-        pred = self.decoder(torch.cat([state, deterministic], dim=-1))
+        x = torch.cat([state, deterministic], dim=-1)
+        shape = x.shape
+        x = x.reshape(-1, shape[-1])
+        pred = self.decoder(x)
+        pred = pred.reshape(*shape[:-1], -1)
         dist = Normal(pred, 1)
+        dist = Independent(dist, 1)
         return dist
 
 
@@ -182,7 +187,12 @@ class RewardModel(nn.Module):
 
     def forward(self, deterministic, state):
         x = torch.cat([state, deterministic], dim=-1)
-        dist = Normal(self.reward(x), 1)
+        shape = x.shape
+        x = x.reshape(-1, shape[-1])
+        pred = self.reward(x)
+        pred = pred.reshape(*shape[:-1], -1)
+        dist = Normal(pred, 1)
+        dist = Independent(dist, 1)
         return dist
 
 
@@ -197,7 +207,11 @@ class DiscountModel(nn.Module):
 
     def forward(self, deterministic, state):
         x = torch.cat([state, deterministic], dim=-1)
-        dist = Bernoulli(logits=self.discount(x))
+        shape = x.shape
+        x = x.reshape(-1, shape[-1])
+        pred = self.discount(x)
+        pred = pred.reshape(*shape[:-1], -1)
+        dist = Bernoulli(logits=pred)
         return dist
 
 
