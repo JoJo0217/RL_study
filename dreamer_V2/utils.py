@@ -214,7 +214,9 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
 
     # horizon만큼 진행
     for t in range(args.horizon):
+        epsilon = 1e-6
         action_dist, action = actor(states, deters)
+        action = action.clamp(-1 + epsilon, 1 - epsilon)
         action_log_prob = action_dist.log_prob(action)
         entropy = action_dist.base_dist.base_dist.entropy()
         deters = recurrent(states, action, deters)
