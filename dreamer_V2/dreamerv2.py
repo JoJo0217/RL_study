@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument("--mean_scale", type=float, default=5.0)
     parser.add_argument("--min_std", type=float, default=1e-4)
     parser.add_argument("--target_momentum", type=float, default=0.99)
-    args = parser.parse_args(args=[])
+    args = parser.parse_args()
 
     return args
 
