@@ -36,6 +36,7 @@ def parse_args():
     parser.add_argument("--critic_lr", type=float, default=1e-4)
     parser.add_argument("--kl_beta", type=int, default=1)
     parser.add_argument("--kl_alpha", type=float, default=0.8)
+    parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--lambda_", type=float, default=0.95)
     parser.add_argument("--entropy_coef", type=float, default=1e-4)
     parser.add_argument("--reinforce_coef", type=float, default=0.1)

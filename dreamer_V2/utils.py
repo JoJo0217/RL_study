@@ -186,7 +186,7 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
     return loss, states, deters
 
 
-def lambda_return(rewards, values, discounts, lambda_):
+def lambda_return(rewards, values, discounts, gamma, lambda_):
 
     # rewards: (T, B), values: (T, B), discounts: (T, B)
 
@@ -195,7 +195,7 @@ def lambda_return(rewards, values, discounts, lambda_):
 
     lambda_return[-1] = values[-1]
     for t in reversed(range(T - 1)):
-        lambda_return[t] = rewards[t] + discounts[t] * \
+        lambda_return[t] = rewards[t] + gamma * discounts[t] * \
             ((1 - lambda_) * values[t] + lambda_ * lambda_return[t + 1])
 
     return lambda_return
@@ -239,7 +239,7 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
     discount_pred = discount(imagine_states, imagine_deters).mean.squeeze(-1)
 
     lambda_return_ = lambda_return(
-        predicted_rewards, target_values, discount_pred, args.lambda_)
+        predicted_rewards, target_values, discount_pred, args.gamma, args.lambda_)
 
     critic_loss = nn.functional.mse_loss(values[:-1], lambda_return_[:-1].detach())
 
