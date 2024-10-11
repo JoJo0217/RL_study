@@ -99,6 +99,10 @@ class RepresentationModel(nn.Module):
         self.MLP = nn.Sequential(
             nn.Linear(args.deterministic_size + args.observation_size, args.hidden_size),
             nn.ELU(),
+            nn.Linear(args.hidden_size, args.hidden_size),
+            nn.ELU(),
+            nn.Linear(args.hidden_size, args.hidden_size),
+            nn.ELU(),
             nn.Linear(args.hidden_size, self.state_size),
         )
 
@@ -121,6 +125,10 @@ class TransitionModel(nn.Module):
         self.class_size = args.class_size
         self.MLP = nn.Sequential(
             nn.Linear(args.deterministic_size, args.hidden_size),
+            nn.ELU(),
+            nn.Linear(args.hidden_size, args.hidden_size),
+            nn.ELU(),
+            nn.Linear(args.hidden_size, args.hidden_size),
             nn.ELU(),
             nn.Linear(args.hidden_size, args.state_size),
         )
@@ -192,6 +200,8 @@ class RewardModel(nn.Module):
         self.reward = nn.Sequential(
             nn.Linear(args.state_size + args.deterministic_size, args.hidden_size),
             nn.ELU(),
+            nn.Linear(args.hidden_size, args.hidden_size),
+            nn.ELU(),
             nn.Linear(args.hidden_size, 1),
         )
 
@@ -212,6 +222,8 @@ class DiscountModel(nn.Module):
         self.discount = nn.Sequential(
             nn.Linear(args.state_size + args.deterministic_size, args.hidden_size),
             nn.ELU(),
+            nn.Linear(args.hidden_size, args.hidden_size),
+            nn.ELU(),
             nn.Linear(args.hidden_size, 1),
         )
 
@@ -230,13 +242,15 @@ class ActionContinuous(nn.Module):
         super().__init__()
         self.args = args
         self.seq = nn.Sequential(
-            nn.Linear(args.state_size + args.deterministic_size, 256),
+            nn.Linear(args.state_size + args.deterministic_size, args.hidden_size),
             nn.ELU(),
-            nn.Linear(256, 256),
+            nn.Linear(args.hidden_size, args.hidden_size),
+            nn.ELU(),
+            nn.Linear(args.hidden_size, args.hidden_size),
             nn.ELU(),
         )
-        self.mu = nn.Linear(256, action_dim)
-        self.std = nn.Linear(256, action_dim)
+        self.mu = nn.Linear(args.hidden_size, action_dim)
+        self.std = nn.Linear(args.hidden_size, action_dim)
 
     def forward(self, state, deterministic, training=True):
         x = self.seq(torch.cat([state, deterministic], dim=-1))
@@ -260,11 +274,11 @@ class ActionDiscrete(nn.Module):
     def __init__(self, args, action_dim):
         super().__init__()
         self.seq = nn.Sequential(
-            nn.Linear(args.state_size + args.deterministic_size, 256),
+            nn.Linear(args.state_size + args.deterministic_size, args.hidden_size),
             nn.ELU(),
-            nn.Linear(256, 256)
+            nn.Linear(args.hidden_size, args.hidden_size)
         )
-        self.logits = nn.Linear(256, action_dim)
+        self.logits = nn.Linear(args.hidden_size, action_dim)
 
     def forward(self, state, deterministic, training=True):
         x = self.seq(torch.cat([state, deterministic], dim=-1))
