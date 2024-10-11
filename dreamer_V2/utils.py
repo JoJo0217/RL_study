@@ -13,17 +13,23 @@ def set_seed(seed):
     random.seed(seed)
 
 
+def normalize_obs(obs):
+    return np.transpose(np.array(obs), (2, 0, 1)) / 255.0 - 0.5
+
+
 def seed_episode(env, replay_buffer, num_episode):
-    print("collecting seed data...")
+    print("Collecting seed data...")
     for _ in tqdm(range(num_episode)):
         obs, _ = env.reset()
+        obs = normalize_obs(obs)
         done = False
         experience = []
         while not done:
             action = env.action_space.sample()
             next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-            experience.append((np.array(obs), np.array(action), reward, done))
+            next_obs = normalize_obs(next_obs)
+            experience.append((obs, np.array(action), reward, next_obs, done))
             obs = next_obs
         for exp in experience:
             replay_buffer.push(*exp)
@@ -31,29 +37,26 @@ def seed_episode(env, replay_buffer, num_episode):
 
 def collect_data(args, env, obs_shape, action_dim, num_episode, world_model, actor, replay_buffer, device):
     encoder, recurrent, representation, transition, decoder, reward, discount = world_model
-    print("Collecting data")
+    print("Collecting data...")
     total_reward = 0
     with torch.no_grad():
         for i in tqdm(range(num_episode)):
             obs, info = env.reset()
+            obs = normalize_obs(obs)
             done = False
             prev_deter = recurrent.init_hidden(1).to(device)
             prev_state = recurrent.init_state(1).to(device)
             prev_action = torch.zeros(1, action_dim).to(device)
             while not done:
-                obs = np.array(obs).reshape(-1)
                 obs_embed = encoder(torch.tensor(
-                    obs, dtype=torch.float32).to(device).view(1, obs_shape))
+                    obs, dtype=torch.float32).to(device).unsqueeze(0))
                 deter = recurrent(prev_action, prev_state, prev_deter)
                 _, posterior = representation(deter, obs_embed)
-                action_dist = actor(posterior, deter)
-                action = action_dist.sample()
-                action = torch.tanh(action)
-                next_obs, reward, terminated, truncated, info = env.step(action.cpu().numpy())
+                _, action = actor(posterior, deter)
+                next_obs, reward, terminated, truncated, info = env.step(action[0].cpu().numpy())
+                next_obs = normalize_obs(next_obs)
                 done = terminated or truncated
-                reward = np.array(reward)
-                done = np.array(done)
-                replay_buffer.push(obs, action.cpu(), reward, done)
+                replay_buffer.push(obs, action[0].cpu(), np.array(reward), next_obs, done)
                 obs = next_obs
                 prev_deter = deter
                 prev_state = posterior
@@ -64,7 +67,7 @@ def collect_data(args, env, obs_shape, action_dim, num_episode, world_model, act
 
 def evaluate(args, env_, obs_shape, action_dim, num_episode, world_model, actor, replay_buffer, device, is_render=True):
     encoder, recurrent, representation, transition, decoder, reward, discount = world_model
-    print("Collecting data")
+    print("Evaluating...")
     total_reward = 0
 
     if is_render:
@@ -76,18 +79,19 @@ def evaluate(args, env_, obs_shape, action_dim, num_episode, world_model, actor,
     with torch.no_grad():
         for i in tqdm(range(num_episode)):
             obs, info = env.reset()
+            obs = normalize_obs(obs)
             done = False
             prev_deter = recurrent.init_hidden(1).to(device)
             prev_state = recurrent.init_state(1).to(device)
             prev_action = torch.zeros(1, action_dim).to(device)
             while not done:
-                obs = np.array(obs).reshape(-1)
                 obs_embed = encoder(torch.tensor(
-                    obs, dtype=torch.float32).to(device).view(1, obs_shape))
+                    obs, dtype=torch.float32).to(device).unsqueeze(0))
                 deter = recurrent(prev_action, prev_state, prev_deter)
                 _, posterior = representation(deter, obs_embed)
-                action = actor(posterior, deter, training=False)
-                next_obs, reward, terminated, truncated, info = env.step(action.cpu().numpy())
+                _, action = actor(posterior, deter)
+                next_obs, reward, terminated, truncated, info = env.step(action[0].cpu().numpy())
+                next_obs = normalize_obs(next_obs)
                 done = terminated or truncated
                 reward = np.array(reward)
 
@@ -115,12 +119,13 @@ def save_model(args, world_model, actor, critic):
 
 def train_world(args, batch, world_model, world_optimizer, world_model_params, device):
     encoder, recurrent, representation, transition, decoder, reward, discount = world_model
-    obs_seq, action_seq, reward_seq, done_seq = batch
+    obs_seq, action_seq, reward_seq, next_obs_seq, done_seq = batch
 
     # (batch, seq, (item))
     obs_seq = torch.tensor(obs_seq, dtype=torch.float32).to(device)
     action_seq = torch.tensor(action_seq, dtype=torch.float32).to(device)
     reward_seq = torch.tensor(reward_seq, dtype=torch.float32).to(device)
+    next_obs_seq = torch.tensor(next_obs_seq, dtype=torch.float32).to(device)
     done_seq = torch.tensor(done_seq, dtype=torch.float32).to(device)
     batch_size = args.batch_size
     seq_len = args.batch_seq
@@ -131,30 +136,34 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
     states = torch.zeros(batch_size, seq_len, args.state_size).to(device)
     deters = torch.zeros(batch_size, seq_len, args.deterministic_size).to(device)
 
-    obs_embeded = encoder(obs_seq.view(-1, obs_seq.size(-1))
+    obs_embeded = encoder(obs_seq.view(-1, *obs_seq.size()[2:])
                           ).view(batch_size, seq_len, args.observation_size)
     discount_criterion = nn.BCELoss()
-    kl_loss = torch.zeros(batch_size).to(device)
+    kl_loss = torch.zeros(1).to(device)
+
     for t in range(1, seq_len):
         deter = recurrent(prev_state, action_seq[:, t - 1], prev_deter)
-        prior_dist, prior = transition(deter)
+        prior_dist, _ = transition(deter)
         posterior_dist, posterior = representation(deter, obs_embeded[:, t])
 
         prior_dist_sg, _ = transition.stop_grad(deter)
         posterior_dist_sg, _ = representation.stop_grad(deter, obs_embeded[:, t])
 
         kl_loss += args.kl_alpha * \
-            torch.distributions.kl.kl_divergence(prior_dist, posterior_dist_sg).sum(-1)
+            torch.max(torch.distributions.kl.kl_divergence(
+                posterior_dist_sg, prior_dist).mean(), torch.tensor(args.free_bit).to(device))
         kl_loss += (1 - args.kl_alpha) * \
-            torch.distributions.kl.kl_divergence(prior_dist_sg, posterior_dist).sum(-1)
+            torch.max(torch.distributions.kl.kl_divergence(
+                posterior_dist, prior_dist_sg).mean(), torch.tensor(args.free_bit).to(device))
+
+        kl_loss += torch.mean(torch.distributions.kl.kl_divergence(posterior_dist, prior_dist))
         deters[:, t] = deter
-        states[:, t] = prior
+        states[:, t] = posterior
 
         prev_deter = deter
         prev_state = posterior
 
     kl_loss = kl_loss / (seq_len - 1)
-
     obs_pred_dist = decoder(states[:, 1:], deters[:, 1:])
     reward_pred_dist = reward(states[:, 1:], deters[:, 1:])
     discount_pred_dist = discount(states[:, 1:], deters[:, 1:])
@@ -163,13 +172,13 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
     reward_loss = reward_pred_dist.log_prob(reward_seq[:, 1:]).mean()
     discount_loss = discount_criterion(discount_pred_dist.probs, 1 - done_seq[:, 1:]).mean()
 
-    total_loss = -obs_loss - reward_loss + discount_loss + args.kl_beta * kl_loss.mean()
+    total_loss = -obs_loss - reward_loss + discount_loss + args.kl_beta * kl_loss
     world_optimizer.zero_grad()
     total_loss.backward()
     nn.utils.clip_grad_norm_(world_model_params, args.clip_grad)
     world_optimizer.step()
 
-    loss = {"kl_loss": kl_loss.mean().item(), "obs_loss": -obs_loss.item(
+    loss = {"kl_loss": kl_loss.item(), "obs_loss": -obs_loss.item(
     ), "reward_loss": -reward_loss.item(), "discount_loss": discount_loss.item()}
     states = states[:, 1:].detach()
     deters = deters[:, 1:].detach()
@@ -184,10 +193,10 @@ def lambda_return(rewards, values, discounts, lambda_):
     T, B = rewards.size()
     lambda_return = torch.zeros(T, B).to(rewards.device)
 
-    lambda_return[-1] = rewards[-1] + discounts[-1] * values[-1]
+    lambda_return[-1] = values[-1]
     for t in reversed(range(T - 1)):
         lambda_return[t] = rewards[t] + discounts[t] * \
-            ((1 - lambda_) * values[t + 1] + lambda_ * lambda_return[t + 1])
+            ((1 - lambda_) * values[t] + lambda_ * lambda_return[t + 1])
 
     return lambda_return
 
@@ -197,55 +206,43 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
     states = states.reshape(-1, states.size(-1))
     deters = deters.reshape(-1, deters.size(-1))
 
-    imagine_states = [states]
-    imagine_deters = [deters]
-    imagine_rewards = []
-    imagine_values = []
+    imagine_states = []
+    imagine_deters = []
     imagine_values_target = []
     imagine_action_log_probs = []
-    imgaine_discounts = []
-    imgaine_entropy = []
+    imagine_entropy = []
 
-    for t in range(1, args.horizon + 1):
-        action_dist = actor(imagine_states[t - 1], imagine_deters[t - 1])
-        action = action_dist.rsample()
-        action_log_prob = action_dist.log_prob(action).sum(-1)
-        action = torch.tanh(action)
-        entropy = action_dist.entropy().sum(-1)
-        deter = recurrent(imagine_states[t - 1], action, imagine_deters[t - 1])
-        _, prior = transition(deter)
+    # horizon만큼 진행
+    for t in range(args.horizon):
+        action_dist, action = actor(states, deters)
+        action_log_prob = action_dist.log_prob(action)
+        entropy = action_dist.base_dist.base_dist.entropy()
+        deters = recurrent(states, action, deters)
+        _, states = transition(deters)
 
-        imagine_states.append(prior)
-        imagine_deters.append(deter)
-
-        reward_dist = reward(imagine_states[t], imagine_deters[t])
-        reward_pred = reward_dist.sample()
-        discount_dist = discount(imagine_states[t], imagine_deters[t])
-        discount_pred = discount_dist.sample()
-
-        value = critic(imagine_states[t], imagine_deters[t])
-        target_value = target_net(imagine_states[t], imagine_deters[t])
-
+        imagine_states.append(states)
+        imagine_deters.append(deters)
         imagine_action_log_probs.append(action_log_prob)
-        imagine_rewards.append(reward_pred)
-        imgaine_discounts.append(discount_pred)
-        imagine_values.append(value)
-        imagine_values_target.append(target_value)
-        imgaine_entropy.append(entropy)
+        imagine_entropy.append(entropy)
 
-    imagine_rewards = torch.stack(imagine_rewards, dim=0).squeeze(-1)
-    imgaine_discounts = torch.stack(imgaine_discounts, dim=0).squeeze(-1)
-    imagine_values = torch.stack(imagine_values, dim=0).squeeze(-1)
-    imagine_values_target = torch.stack(imagine_values_target, dim=0).squeeze(-1)
+    # (horizon, B, (item))
+    imagine_states = torch.stack(imagine_states, dim=0).squeeze(-1)
+    imagine_deters = torch.stack(imagine_deters, dim=0).squeeze(-1)
     imagine_action_log_probs = torch.stack(imagine_action_log_probs, dim=0).squeeze(-1)
+    imagine_entropy = torch.stack(imagine_entropy, dim=0).squeeze(-1)
+
+    predicted_rewards = reward(imagine_states, imagine_deters).mean.squeeze(-1)
+    target_values = target_net(imagine_states, imagine_deters).squeeze(-1)
+    values = critic(imagine_states, imagine_deters).squeeze(-1)
+    discount_pred = discount(imagine_states, imagine_deters).mean.squeeze(-1)
 
     lambda_return_ = lambda_return(
-        imagine_rewards, imagine_values_target, imgaine_discounts, args.lambda_)
-    critic_loss = nn.functional.mse_loss(imagine_values[:-1], lambda_return_[:-1].detach())
+        predicted_rewards, target_values, discount_pred, args.lambda_)
+    critic_loss = nn.functional.mse_loss(values[:-1], lambda_return_[:-1].detach())
 
-    actor_loss = -args.reinforce_coef * (imagine_action_log_probs[:-1] * (lambda_return_[:-1] - imagine_values_target[:-1]).detach()).mean() -\
+    actor_loss = -args.reinforce_coef * (imagine_action_log_probs[:-1] * (lambda_return_[:-1] - values[:-1]).detach()).mean() -\
         (1 - args.reinforce_coef) * lambda_return_[:-1].mean() -\
-        args.entropy_coef * torch.stack(imgaine_entropy[:-1], dim=0).mean()
+        args.entropy_coef * imagine_entropy[:-1].mean()
 
     actor_optim.zero_grad()
     critic_optim.zero_grad()

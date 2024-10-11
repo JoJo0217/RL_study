@@ -4,7 +4,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 import random
-from torch.distributions import OneHotCategorical, Normal, Independent, Bernoulli, kl_divergence
+from torch.distributions import OneHotCategorical, Normal, Independent, Bernoulli, kl_divergence, OneHotCategoricalStraightThrough
 
 
 # Recurrent model: (h_t-1, s_t-1, a_t) -> h_t
@@ -33,26 +33,29 @@ class RSSM(nn.Module):
         return torch.zeros(batch_size, self.stoch_size)
 
 
-class Encoder3D(nn.Module):
+class Encoder2D(nn.Module):
     def __init__(self, args, obs_channel=3):
-        super(Encoder3D, self).__init__()
+        super(Encoder2D, self).__init__()
         self.observation_size = args.observation_size
         self.encoder = nn.Sequential(
-            nn.Conv2d(obs_channel, 32, 4, stride=2),  # 96x96x3 -> 47x47x32
+            nn.Conv2d(obs_channel, 32, 4, stride=2),  # 64x64x3 -> 31x31x32
             nn.ELU(),
-            nn.Conv2d(32, 64, 4, stride=2),  # 47x47x32 -> 22x22x64
+            nn.Conv2d(32, 64, 4, stride=2),  # 31x31x32 -> 14x14x64
             nn.ELU(),
-            nn.Conv2d(64, 128, 4, stride=2),  # 22x22x64 -> 10x10x128
+            nn.Conv2d(64, 128, 4, stride=2),  # 14x14x64 -> 6x6x128
             nn.ELU(),
-            nn.Conv2d(128, 256, 4, stride=2),  # 10x10x128 -> 4x4x256
+            nn.Conv2d(128, 256, 4, stride=2),  # 6x6x128 -> 2x2x256
             nn.Flatten(),
-            nn.Linear(4096, self.observation_size),
+            nn.Linear(1024, self.observation_size),
         )
 
+    def forward(self, obs):
+        return self.encoder(obs)
 
-class Encoder2D(nn.Module):
+
+class Encoder1D(nn.Module):
     def __init__(self, args, obs_size):
-        super(Encoder2D, self).__init__()
+        super(Encoder1D, self).__init__()
         self.observation_size = args.observation_size
         self.encoder = nn.Sequential(
             nn.Linear(obs_size, 256),
@@ -70,8 +73,9 @@ def get_categorical_state(logits, categorical_size, class_size):
     shape = logits.shape
     logit = torch.reshape(logits, shape=[*shape[:-1], categorical_size, class_size])
     dist = OneHotCategorical(logits=logit)
-    stoch = dist.sample()
-    stoch += dist.probs - dist.probs.detach()
+    stoch = dist.sample() + dist.probs - dist.probs.detach()
+
+    dist = Independent(OneHotCategoricalStraightThrough(logits=logit), 1)
     return dist, torch.flatten(stoch, start_dim=-2, end_dim=-1)
 
 
@@ -80,8 +84,9 @@ def get_dist_stopgrad(logits, categorical_size, class_size):
     shape = logits.shape
     logit = torch.reshape(logits, shape=[*shape[:-1], categorical_size, class_size])
     dist = OneHotCategorical(logits=logit)
-    stoch = dist.sample()
-    stoch += dist.probs - dist.probs.detach()
+    stoch = dist.sample() + dist.probs - dist.probs.detach()
+
+    dist = Independent(OneHotCategoricalStraightThrough(logits=logit), 1)
     return dist, torch.flatten(stoch, start_dim=-2, end_dim=-1)
 
 
@@ -129,34 +134,39 @@ class TransitionModel(nn.Module):
         return get_dist_stopgrad(logits, self.category_size, self.class_size)
 
 
-class Decoder3D(nn.Module):
+class Decoder2D(nn.Module):
     def __init__(self, args, obs_channel=3):
-        super(Decoder3D, self).__init__()
+        super(Decoder2D, self).__init__()
         self.layers = nn.Sequential(
-            nn.Linear(args.state_size + args.deterministic_size, 4096),
+            nn.Linear(args.state_size + args.deterministic_size, 1024),
             nn.ELU(),
-            nn.Unflatten(1, (256, 4, 4)),
-            nn.ConvTranspose2d(256, 128, 4, stride=2),  # 4x4x256 -> 10x10x128
+            nn.Unflatten(1, (256, 2, 2)),
+            nn.ConvTranspose2d(256, 128, 4, stride=2),  # 2x2x256 -> 6x6x128
             nn.ELU(),
-            nn.ConvTranspose2d(128, 64, 4, stride=2),  # 10x10x128 -> 22x22x64
+            nn.ConvTranspose2d(128, 64, 4, stride=2),  # 6x6x128 -> 14x14x64
             nn.ELU(),
-            nn.ConvTranspose2d(64, 32, 4, stride=2),  # 22x22x64 -> 47x47x32
+            nn.ConvTranspose2d(64, 32, 4, stride=2),  # 14x14x64 -> 31x31x32
             nn.ELU(),
-            nn.ConvTranspose2d(32, obs_channel, 4, stride=2),  # 47x47x32 -> 96x96x3
-            nn.Upsample(size=(96, 96), mode='bilinear', align_corners=False),
+            nn.ConvTranspose2d(32, obs_channel, 4, stride=2),  # 31x31x32 -> 64x64x3
+            nn.Upsample(size=(64, 64), mode='bilinear', align_corners=False),
         )
 
     def forward(self, state, deterministic):
-        pred = self.layers(torch.cat([state, deterministic], dim=-1))
-        # pred (batch_size, obs_channel, 96, 96)
+        x = torch.cat([state, deterministic], dim=-1)
+        shape = x.shape
+        x = x.reshape(-1, shape[-1])
+        pred = self.layers(x)
+        # (batch*seq, obs_channel, 64, 64)
+        pred_shape = pred.shape
+        pred = pred.reshape(*shape[:-1], *pred_shape[1:])
         m = Normal(pred, 1)
         dist = Independent(m, 3)
         return dist
 
 
-class Decoder2D(nn.Module):
+class Decoder1D(nn.Module):
     def __init__(self, args, obs_size):
-        super(Decoder2D, self).__init__()
+        super(Decoder1D, self).__init__()
         self.decoder = nn.Sequential(
             nn.Linear(args.state_size + args.deterministic_size, 256),
             nn.ELU(),
@@ -218,10 +228,12 @@ class DiscountModel(nn.Module):
 class ActionContinuous(nn.Module):
     def __init__(self, args, action_dim):
         super().__init__()
+        self.args = args
         self.seq = nn.Sequential(
             nn.Linear(args.state_size + args.deterministic_size, 256),
             nn.ELU(),
-            nn.Linear(256, 256)
+            nn.Linear(256, 256),
+            nn.ELU(),
         )
         self.mu = nn.Linear(256, action_dim)
         self.std = nn.Linear(256, action_dim)
@@ -230,14 +242,18 @@ class ActionContinuous(nn.Module):
         x = self.seq(torch.cat([state, deterministic], dim=-1))
         mu = self.mu(x)
         std = self.std(x)
-        std = F.softplus(std) + 1e-4
+        std = F.softplus(std) + self.args.min_std
 
-        if training:
-            action_dist = Normal(mu, std)
-            return action_dist
-        else:
-            action = torch.tanh(mu)
-            return action
+        mu = mu / self.args.mean_scale
+        mu = torch.tanh(mu)
+        mu = mu * self.args.mean_scale
+
+        action_dist = Normal(mu, std)
+        action_dist = torch.distributions.TransformedDistribution(
+            action_dist, torch.distributions.TanhTransform())
+        action_dist = Independent(action_dist, 1)
+        action = action_dist.rsample()
+        return action_dist, action
 
 
 class ActionDiscrete(nn.Module):
@@ -285,15 +301,17 @@ class ReplayBufferSeq:
         self.observations = np.zeros((capacity, *observation_shape), dtype=np.float32)
         self.actions = np.zeros((capacity, action_dim), dtype=np.float32)
         self.rewards = np.zeros((capacity, 1), dtype=np.float32)
+        self.next_observations = np.zeros((capacity, *observation_shape), dtype=np.float32)
         self.done = np.zeros((capacity, 1), dtype=np.int8)
 
         self.index = 0
         self.is_filled = False
 
-    def push(self, observation, action, reward, done):
+    def push(self, observation, action, reward, next_observation, done):
         self.observations[self.index] = observation
         self.actions[self.index] = action
         self.rewards[self.index] = reward
+        self.next_observations[self.index] = next_observation
         self.done[self.index] = done
 
         if self.index == self.capacity - 1:
@@ -323,9 +341,11 @@ class ReplayBufferSeq:
             batch_size, chunk_length, self.actions.shape[1])
         sampled_rewards = self.rewards[sampled_indexes].reshape(
             batch_size, chunk_length, 1)
+        sampled_next_observation = self.next_observations[sampled_indexes].reshape(
+            batch_size, chunk_length, *self.next_observations.shape[1:])
         sampled_done = self.done[sampled_indexes].reshape(
             batch_size, chunk_length, 1)
-        return sampled_observations, sampled_actions, sampled_rewards, sampled_done
+        return sampled_observations, sampled_actions, sampled_rewards, sampled_next_observation, sampled_done
 
     def __len__(self):
         return self.capacity if self.is_filled else self.index
