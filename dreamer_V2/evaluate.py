@@ -29,7 +29,7 @@ def parse_args():
 @torch.no_grad()
 def main():
     args = parse_args()
-    env = gym.make("CarRacing-v3", render_mode="rgb_array")
+    env = gym.make("CarRacing-v2", render_mode="rgb_array")
     env = gym.wrappers.ResizeObservation(env, (64, 64))
     set_seed(args.seed)
 
