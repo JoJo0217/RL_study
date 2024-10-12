@@ -168,16 +168,6 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
         prior_dist, _ = transition(deter)
         posterior_dist, posterior = representation(deter, obs_embeded[:, t])
 
-        prior_dist_sg, _ = transition.stop_grad(deter)
-        posterior_dist_sg, _ = representation.stop_grad(deter, obs_embeded[:, t])
-
-        kl_loss += args.kl_alpha * \
-            torch.max(torch.distributions.kl.kl_divergence(
-                posterior_dist_sg, prior_dist).mean(), torch.tensor(args.free_bit).to(device))
-        kl_loss += (1 - args.kl_alpha) * \
-            torch.max(torch.distributions.kl.kl_divergence(
-                posterior_dist, prior_dist_sg).mean(), torch.tensor(args.free_bit).to(device))
-
         prior_mean.append(prior_dist.mean)
         prior_std.append(prior_dist.stddev)
         posterior_mean.append(posterior_dist.mean)
