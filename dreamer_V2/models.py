@@ -104,33 +104,33 @@ class RepresentationModel(nn.Module):
             nn.ELU(),
             nn.Linear(args.hidden_size, args.hidden_size),
             nn.ELU(),
-            nn.Linear(args.hidden_size, self.state_size if args.rssm_discrete else 2 * self.state_size),
+            nn.Linear(args.hidden_size, 2 * self.state_size if args.rssm_continue else self.state_size),
         )
 
     def forward(self, hidden, obs):
         x = torch.cat([hidden, obs], dim=-1)
         logits = self.MLP(x)
-        if self.args.rssm_discrete:
-            return get_categorical_state(logits, self.category_size, self.class_size)
-        else:
+        if self.args.rssm_continue:
             mean, std = torch.chunk(logits, 2, dim=-1)
             std = F.softplus(std) + 0.1
             m = Normal(mean, std)
             dist = Independent(m, 1)
             return dist, m.rsample()
+        else:
+            return get_categorical_state(logits, self.category_size, self.class_size)
 
     def stop_grad(self, hidden, obs):
         x = torch.cat([hidden, obs], dim=-1)
         logits = self.MLP(x)
-        if self.args.rssm_discrete:
-            return get_dist_stopgrad(logits, self.category_size, self.class_size)
-        else:
+        if self.args.rssm_continue:
             logits = logits.detach()
             mean, std = torch.chunk(logits, 2, dim=-1)
             std = F.softplus(std) + 0.1
             m = Normal(mean, std)
             dist = Independent(m, 1)
             return dist, m.rsample()
+        else:
+            return get_dist_stopgrad(logits, self.category_size, self.class_size)
 
 
 class TransitionModel(nn.Module):
@@ -147,31 +147,31 @@ class TransitionModel(nn.Module):
             nn.ELU(),
             nn.Linear(args.hidden_size, args.hidden_size),
             nn.ELU(),
-            nn.Linear(args.hidden_size, args.state_size if args.rssm_discrete else 2 * args.state_size),
+            nn.Linear(args.hidden_size, 2 * args.state_size if args.rssm_continue else args.state_size),
         )
 
     def forward(self, hidden):
         logits = self.MLP(hidden)
-        if self.args.rssm_discrete:
-            return get_categorical_state(logits, self.category_size, self.class_size)
-        else:
+        if self.args.rssm_continue:
             mean, std = torch.chunk(logits, 2, dim=-1)
             std = F.softplus(std) + self.args.min_std
             m = Normal(mean, std)
             dist = Independent(m, 1)
             return dist, m.rsample()
+        else:
+            return get_categorical_state(logits, self.category_size, self.class_size)
 
     def stop_grad(self, hidden):
         logits = self.MLP(hidden)
-        if self.args.rssm_discrete:
-            return get_dist_stopgrad(logits, self.category_size, self.class_size)
-        else:
+        if self.args.rssm_continue:
             logits = logits.detach()
             mean, std = torch.chunk(logits, 2, dim=-1)
             std = F.softplus(std) + self.args.min_std
             m = Normal(mean, std)
             dist = Independent(m, 1)
             return dist, m.rsample()
+        else:
+            return get_dist_stopgrad(logits, self.category_size, self.class_size)
 
 
 class Decoder2D(nn.Module):
