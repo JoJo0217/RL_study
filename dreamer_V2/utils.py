@@ -233,23 +233,23 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
     imagine_entropy = torch.stack(imagine_entropy, dim=0).squeeze(-1)
 
     predicted_rewards = reward(imagine_states, imagine_deters).mean.squeeze(-1)
-    target_values = target_net(imagine_states, imagine_deters).squeeze(-1)
-    values = critic(imagine_states.detach(), imagine_deters.detach()).squeeze(-1)
+    target_values = target_net(imagine_states, imagine_deters).mean.squeeze(-1)
     discount_pred = discount(imagine_states, imagine_deters).mean.squeeze(-1)
 
     lambda_return_ = lambda_return(
         predicted_rewards, target_values, discount_pred, args.gamma, args.lambda_)
 
-    critic_loss = nn.functional.mse_loss(values[:-1], lambda_return_[:-1].detach())
-
-    actor_loss = -args.reinforce_coef * (imagine_action_log_probs[:-1] * (lambda_return_[:-1] - target_values[:-1]).detach()).mean() -\
+    actor_loss = -args.reinforce_coef * (imagine_action_log_probs[1:] * (lambda_return_[:-1] - target_values[:-1]).detach()).mean() -\
         (1 - args.reinforce_coef) * lambda_return_[:-1].mean() -\
-        args.entropy_coef * imagine_entropy[:-1].mean()
+        args.entropy_coef * imagine_entropy[1:].mean()
 
     actor_optim.zero_grad()
     actor_loss.backward()
     nn.utils.clip_grad_norm_(actor.parameters(), args.clip_grad)
     actor_optim.step()
+
+    value_dist = critic(imagine_states[:-1].detach(), imagine_deters[:-1].detach())
+    critic_loss = -torch.mean(value_dist.log_prob(lambda_return_[:-1].unsqueeze(-1).detach()))
 
     critic_optim.zero_grad()
     critic_loss.backward()
