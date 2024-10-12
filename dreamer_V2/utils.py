@@ -195,8 +195,8 @@ def lambda_return(rewards, values, discounts, gamma, lambda_):
 
     lambda_return[-1] = values[-1]
     for t in reversed(range(T - 1)):
-        lambda_return[t] = rewards[t] + gamma * discounts[t] * \
-            ((1 - lambda_) * values[t] + lambda_ * lambda_return[t + 1])
+        lambda_return[t] = rewards[t+1] + gamma * discounts[t+1] * \
+            ((1 - lambda_) * values[t+1] + lambda_ * lambda_return[t + 1])
 
     return lambda_return
 
