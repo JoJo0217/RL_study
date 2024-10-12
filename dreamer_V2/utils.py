@@ -188,10 +188,10 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
 
 def lambda_return(rewards, values, discounts, gamma, lambda_):
 
-    # rewards: (T, B), values: (T, B), discounts: (T, B)
+    # rewards: (T, B, 1), values: (T, B, 1), discounts: (T, B, 1)
 
-    T, B = rewards.size()
-    lambda_return = torch.zeros(T, B).to(rewards.device)
+    T, B, item = rewards.size()
+    lambda_return = torch.zeros(*rewards.shape).to(rewards.device)
 
     lambda_return[-1] = values[-1]
     for t in reversed(range(T - 1)):
@@ -227,19 +227,19 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
         imagine_entropy.append(entropy)
 
     # (horizon, B, (item))
-    imagine_states = torch.stack(imagine_states, dim=0).squeeze(-1)
-    imagine_deters = torch.stack(imagine_deters, dim=0).squeeze(-1)
-    imagine_action_log_probs = torch.stack(imagine_action_log_probs, dim=0).squeeze(-1)
-    imagine_entropy = torch.stack(imagine_entropy, dim=0).squeeze(-1)
+    imagine_states = torch.stack(imagine_states, dim=0)
+    imagine_deters = torch.stack(imagine_deters, dim=0)
+    imagine_action_log_probs = torch.stack(imagine_action_log_probs, dim=0)
+    imagine_entropy = torch.stack(imagine_entropy, dim=0)
 
-    predicted_rewards = reward(imagine_states, imagine_deters).mean.squeeze(-1)
-    target_values = target_net(imagine_states, imagine_deters).mean.squeeze(-1)
-    discount_pred = discount(imagine_states, imagine_deters).mean.squeeze(-1)
+    predicted_rewards = reward(imagine_states, imagine_deters).mean
+    target_values = target_net(imagine_states, imagine_deters).mean
+    discount_pred = discount(imagine_states, imagine_deters).mean
 
     lambda_return_ = lambda_return(
         predicted_rewards, target_values, discount_pred, args.gamma, args.lambda_)
 
-    actor_loss = -args.reinforce_coef * (imagine_action_log_probs[1:] * (lambda_return_[:-1] - target_values[:-1]).detach()).mean() -\
+    actor_loss = -args.reinforce_coef * (imagine_action_log_probs[1:].unsqueeze(-1) * (lambda_return_[:-1] - target_values[:-1]).detach()).mean() -\
         (1 - args.reinforce_coef) * lambda_return_[:-1].mean() -\
         args.entropy_coef * imagine_entropy[1:].mean()
 
@@ -249,7 +249,7 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
     actor_optim.step()
 
     value_dist = critic(imagine_states[:-1].detach(), imagine_deters[:-1].detach())
-    critic_loss = -torch.mean(value_dist.log_prob(lambda_return_[:-1].unsqueeze(-1).detach()))
+    critic_loss = -torch.mean(value_dist.log_prob(lambda_return_[:-1].detach()))
 
     critic_optim.zero_grad()
     critic_loss.backward()
