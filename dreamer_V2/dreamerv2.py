@@ -44,7 +44,7 @@ def parse_args():
     parser.add_argument("--buffer_size", type=int, default=100000)
     parser.add_argument("--mean_scale", type=float, default=5.0)
     parser.add_argument("--min_std", type=float, default=1e-4)
-    parser.add_argument("--target_momentum", type=float, default=0.99)
+    parser.add_argument("--target_momentum", type=float, default=0.98)
     args = parser.parse_args()
 
     return args

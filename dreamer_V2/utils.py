@@ -117,6 +117,24 @@ def save_model(args, world_model, actor, critic):
     torch.save(critic.state_dict(), args.output + "/critic.pth")
 
 
+def kl_balance_loss(prior_mean, prior_std, posterior_mean, posterior_std, alpha, freebits):
+    prior_dist = torch.distributions.Normal(prior_mean, prior_std)
+    prior_dist = torch.distributions.Independent(prior_dist, 1)
+    posterior_dist = torch.distributions.Normal(posterior_mean, posterior_std)
+    posterior_dist = torch.distributions.Independent(posterior_dist, 1)
+
+    prior_dist_sg = torch.distributions.Normal(prior_mean.detach(), prior_std.detach())
+    prior_dist_sg = torch.distributions.Independent(prior_dist_sg, 1)
+    posterior_dist_sg = torch.distributions.Normal(posterior_mean.detach(), posterior_std.detach())
+    posterior_dist_sg = torch.distributions.Independent(posterior_dist_sg, 1)
+
+    kl_loss = alpha * torch.max(torch.distributions.kl.kl_divergence(posterior_dist_sg, prior_dist).mean(), torch.tensor(freebits)) + \
+        (1 - alpha) * torch.max(torch.distributions.kl.kl_divergence(posterior_dist,
+                                                                     prior_dist_sg).mean(), torch.tensor(freebits))
+
+    return kl_loss
+
+
 def train_world(args, batch, world_model, world_optimizer, world_model_params, device):
     encoder, recurrent, representation, transition, decoder, reward, discount = world_model
     obs_seq, action_seq, reward_seq, next_obs_seq, done_seq = batch
@@ -139,7 +157,11 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
     obs_embeded = encoder(obs_seq.view(-1, *obs_seq.size()[2:])
                           ).view(batch_size, seq_len, args.observation_size)
     discount_criterion = nn.BCELoss()
-    kl_loss = torch.zeros(1).to(device)
+
+    prior_mean = []
+    prior_std = []
+    posterior_mean = []
+    posterior_std = []
 
     for t in range(1, seq_len):
         deter = recurrent(prev_state, action_seq[:, t - 1], prev_deter)
@@ -156,13 +178,25 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
             torch.max(torch.distributions.kl.kl_divergence(
                 posterior_dist, prior_dist_sg).mean(), torch.tensor(args.free_bit).to(device))
 
+        prior_mean.append(prior_dist.mean)
+        prior_std.append(prior_dist.stddev)
+        posterior_mean.append(posterior_dist.mean)
+        posterior_std.append(posterior_dist.stddev)
+
         deters[:, t] = deter
         states[:, t] = posterior
 
         prev_deter = deter
         prev_state = posterior
 
-    kl_loss = kl_loss / (seq_len - 1)
+    prior_mean = torch.stack(prior_mean, dim=1)
+    prior_std = torch.stack(prior_std, dim=1)
+    posterior_mean = torch.stack(posterior_mean, dim=1)
+    posterior_std = torch.stack(posterior_std, dim=1)
+
+    kl_loss = kl_balance_loss(prior_mean, prior_std, posterior_mean,
+                              posterior_std, args.kl_alpha, args.free_bit)
+
     obs_pred_dist = decoder(states[:, 1:], deters[:, 1:])
     reward_pred_dist = reward(states[:, 1:], deters[:, 1:])
     discount_pred_dist = discount(states[:, 1:], deters[:, 1:])
