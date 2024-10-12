@@ -156,7 +156,6 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
             torch.max(torch.distributions.kl.kl_divergence(
                 posterior_dist, prior_dist_sg).mean(), torch.tensor(args.free_bit).to(device))
 
-        kl_loss += torch.mean(torch.distributions.kl.kl_divergence(posterior_dist, prior_dist))
         deters[:, t] = deter
         states[:, t] = posterior
 
