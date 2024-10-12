@@ -195,8 +195,8 @@ def lambda_return(rewards, values, discounts, gamma, lambda_):
 
     lambda_return[-1] = values[-1]
     for t in reversed(range(T - 1)):
-        lambda_return[t] = rewards[t+1] + gamma * discounts[t+1] * \
-            ((1 - lambda_) * values[t+1] + lambda_ * lambda_return[t + 1])
+        lambda_return[t] = rewards[t + 1] + gamma * discounts[t + 1] * \
+            ((1 - lambda_) * values[t + 1] + lambda_ * lambda_return[t + 1])
 
     return lambda_return
 
@@ -208,7 +208,6 @@ def train_actor_critic(args, states, deters, world_model, actor, critic, target_
 
     imagine_states = []
     imagine_deters = []
-    imagine_values_target = []
     imagine_action_log_probs = []
     imagine_entropy = []
 

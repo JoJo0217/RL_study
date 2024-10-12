@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument("--continuous_action", type=bool, default=True)
     parser.add_argument("--mean_scale", type=float, default=5.0)
     parser.add_argument("--min_std", type=float, default=1e-4)
-    args = parser.parse_args(args=[])
+    args = parser.parse_args()
 
     return args
 
