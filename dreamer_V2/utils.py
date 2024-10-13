@@ -50,7 +50,7 @@ def collect_data(args, env, obs_shape, action_dim, num_episode, world_model, act
             while not done:
                 obs_embed = encoder(torch.tensor(
                     obs, dtype=torch.float32).to(device).unsqueeze(0))
-                deter = recurrent(prev_action, prev_state, prev_deter)
+                deter = recurrent(prev_state, prev_action, prev_deter)
                 _, posterior = representation(deter, obs_embed)
                 _, action = actor(posterior, deter)
                 next_obs, reward, terminated, truncated, info = env.step(action[0].cpu().numpy())
@@ -87,7 +87,7 @@ def evaluate(args, env_, obs_shape, action_dim, num_episode, world_model, actor,
             while not done:
                 obs_embed = encoder(torch.tensor(
                     obs, dtype=torch.float32).to(device).unsqueeze(0))
-                deter = recurrent(prev_action, prev_state, prev_deter)
+                deter = recurrent(prev_state, prev_action, prev_deter)
                 _, posterior = representation(deter, obs_embed)
                 _, action = actor(posterior, deter)
                 next_obs, reward, terminated, truncated, info = env.step(action[0].cpu().numpy())
@@ -148,8 +148,8 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
     batch_size = args.batch_size
     seq_len = args.batch_seq
 
-    prev_deter = recurrent.init_hidden(batch_size).to(device)
-    prev_state = recurrent.init_state(batch_size).to(device)
+    deter = recurrent.init_hidden(batch_size).to(device)
+    state = recurrent.init_state(batch_size).to(device)
 
     states = torch.zeros(batch_size, seq_len, args.state_size).to(device)
     deters = torch.zeros(batch_size, seq_len, args.deterministic_size).to(device)
@@ -164,20 +164,17 @@ def train_world(args, batch, world_model, world_optimizer, world_model_params, d
     posterior_std = []
 
     for t in range(1, seq_len):
-        deter = recurrent(prev_state, action_seq[:, t - 1], prev_deter)
+        deter = recurrent(state, action_seq[:, t - 1], deter)
         prior_dist, _ = transition(deter)
-        posterior_dist, posterior = representation(deter, obs_embeded[:, t])
+        posterior_dist, state = representation(deter, obs_embeded[:, t])
 
         prior_mean.append(prior_dist.mean)
-        prior_std.append(prior_dist.stddev)
+        prior_std.append(prior_dist.scale)
         posterior_mean.append(posterior_dist.mean)
-        posterior_std.append(posterior_dist.stddev)
+        posterior_std.append(posterior_dist.scale)
 
         deters[:, t] = deter
-        states[:, t] = posterior
-
-        prev_deter = deter
-        prev_state = posterior
+        states[:, t] = state
 
     prior_mean = torch.stack(prior_mean, dim=1)
     prior_std = torch.stack(prior_std, dim=1)
