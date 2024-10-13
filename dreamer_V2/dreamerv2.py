@@ -92,9 +92,8 @@ def main():
 
     seed_episode(env, replay_buffer, args.seed_episode)
     for episode in range(args.total_episode):
-        batch = replay_buffer.sample(args.batch_size, args.batch_seq)
-        print(len(replay_buffer))
         for step in range(args.train_step):
+            batch = replay_buffer.sample(args.batch_size, args.batch_seq)
             loss, states, deters = train_world(
                 args, batch, world_model, model_optim, model_params, device)
             logger.log(episode * args.train_step + step, epoch=episode, **loss)
