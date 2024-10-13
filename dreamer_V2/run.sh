@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=4 python3 dreamerv2.py
+CUDA_VISIBLE_DEVICES=0 python3 dreamerv2.py --rssm_continue

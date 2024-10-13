@@ -113,9 +113,8 @@ class RepresentationModel(nn.Module):
         if self.args.rssm_continue:
             mean, std = torch.chunk(logits, 2, dim=-1)
             std = F.softplus(std) + 0.1
-            m = Normal(mean, std)
-            dist = Independent(m, 1)
-            return dist, m.rsample()
+            dist = Normal(mean, std)
+            return dist, dist.rsample()
         else:
             return get_categorical_state(logits, self.category_size, self.class_size)
 
@@ -126,9 +125,8 @@ class RepresentationModel(nn.Module):
             logits = logits.detach()
             mean, std = torch.chunk(logits, 2, dim=-1)
             std = F.softplus(std) + 0.1
-            m = Normal(mean, std)
-            dist = Independent(m, 1)
-            return dist, m.rsample()
+            dist = Normal(mean, std)
+            return dist, dist.rsample()
         else:
             return get_dist_stopgrad(logits, self.category_size, self.class_size)
 
@@ -154,10 +152,9 @@ class TransitionModel(nn.Module):
         logits = self.MLP(hidden)
         if self.args.rssm_continue:
             mean, std = torch.chunk(logits, 2, dim=-1)
-            std = F.softplus(std) + self.args.min_std
-            m = Normal(mean, std)
-            dist = Independent(m, 1)
-            return dist, m.rsample()
+            std = F.softplus(std) + 0.1
+            dist = Normal(mean, std)
+            return dist, dist.rsample()
         else:
             return get_categorical_state(logits, self.category_size, self.class_size)
 
@@ -166,10 +163,9 @@ class TransitionModel(nn.Module):
         if self.args.rssm_continue:
             logits = logits.detach()
             mean, std = torch.chunk(logits, 2, dim=-1)
-            std = F.softplus(std) + self.args.min_std
-            m = Normal(mean, std)
-            dist = Independent(m, 1)
-            return dist, m.rsample()
+            std = F.softplus(std) + 0.1
+            dist = Normal(mean, std)
+            return dist, dist.rsample()
         else:
             return get_dist_stopgrad(logits, self.category_size, self.class_size)
 
@@ -288,7 +284,7 @@ class ActionContinuous(nn.Module):
         x = self.seq(torch.cat([state, deterministic], dim=-1))
         mu = self.mu(x)
         std = self.std(x)
-        std = F.softplus(std) + self.args.min_std
+        std = F.softplus(std + 5.) + self.args.min_std
 
         mu = mu / self.args.mean_scale
         mu = torch.tanh(mu)
