@@ -237,7 +237,7 @@ class RewardModel(nn.Module):
             nn.Linear(args.hidden_size, 1),
         )
 
-    def forward(self, deterministic, state):
+    def forward(self, state, deterministic):
         x = torch.cat([state, deterministic], dim=-1)
         shape = x.shape
         x = x.reshape(-1, shape[-1])
@@ -259,7 +259,7 @@ class DiscountModel(nn.Module):
             nn.Linear(args.hidden_size, 1),
         )
 
-    def forward(self, deterministic, state):
+    def forward(self, state, deterministic):
         x = torch.cat([state, deterministic], dim=-1)
         shape = x.shape
         x = x.reshape(-1, shape[-1])
