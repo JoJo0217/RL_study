@@ -329,11 +329,11 @@ class Value(nn.Module):
     def __init__(self, args):
         super(Value, self).__init__()
         self.seq = nn.Sequential(
-            nn.Linear(args.state_size + args.deterministic_size, 256),
+            nn.Linear(args.state_size + args.deterministic_size, args.hidden_size),
             nn.ELU(),
-            nn.Linear(256, 256),
+            nn.Linear(args.hidden_size, args.hidden_size),
             nn.ELU(),
-            nn.Linear(256, 1)
+            nn.Linear(args.hidden_size, 1)
         )
 
     def forward(self, state, deterministic):
