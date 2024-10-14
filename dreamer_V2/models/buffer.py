@@ -30,16 +30,12 @@ class ReplayBufferSeq:
         sampled_indexes = []
 
         for _ in range(batch_size):
-            try_ = 0
             cross_border = True
             while cross_border:
                 initial_index = np.random.randint(len(self) - chunk_length + 1)
                 final_index = initial_index + chunk_length - 1
                 cross_border = np.logical_and(initial_index <= episode_borders,
                                               episode_borders < final_index).any()
-                try_ += 1
-                if try_ > 100:
-                    break
             sampled_indexes += list(range(initial_index, final_index + 1))
 
         sampled_observations = self.observations[sampled_indexes].reshape(
