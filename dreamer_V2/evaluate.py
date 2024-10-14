@@ -11,6 +11,7 @@ def parse_args():
     parser.add_argument("--recording", type=bool, default=True)
     parser.add_argument("--output", type=str, default="./output")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--rssm_continue", action="store_true")
     parser.add_argument("--state_size", type=int, default=1024)
     parser.add_argument("--categorical_size", type=int, default=32)
     parser.add_argument("--class_size", type=int, default=32)
@@ -63,9 +64,9 @@ def main():
         while not done:
             obs_embed = encoder(torch.tensor(
                 obs, dtype=torch.float32).to(device).unsqueeze(0))
-            deter = recurrent(action, state, deter)
-            _, posterior = representation(deter, obs_embed)
-            _, action = actor(posterior, deter)
+            deter = recurrent(state, action, deter)
+            _, state = representation(deter, obs_embed)
+            _, action = actor(state, deter)
 
             next_obs, reward, terminated, truncated, info = env.step(action.cpu().numpy()[0])
             next_obs = normalize_obs(next_obs)
