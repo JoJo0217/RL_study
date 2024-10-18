@@ -35,7 +35,7 @@ def main():
     set_seed(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    action_dim = 3
+    action_dim = env.action_space.shape[0]
     obs_shape = env.observation_space.shape
     obs_shape = obs_shape[-1:] + obs_shape[:2]
 
