@@ -1,6 +1,10 @@
 ## Reinforcement learning 학습 repo입니다.
 공부한 논문이나 모델에 대한 자세한 내용은 [블로그](https://velog.io/@jojo0217/posts)를 보시면 알 수 있습니다.
 
+## 구현 목록
+- DQN
+- Dreamer
+
 ## 실행
 각 폴더의
 ```
